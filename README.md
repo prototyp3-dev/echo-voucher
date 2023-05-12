@@ -1,6 +1,8 @@
 # echo-voucher DApp
 
-echo-voucher is a customized DApp written in Python, which originally resembles the one provided by the sample [Echo Python DApp](https://github.com/cartesi/rollups-examples/tree/main/echo-python).
+The echo-voucher DApp works as an echo dapp, but instead it echoes assets back to the owner emitting vouchers, and also tries to emit vouchers when it receives a json object.
+
+It is a customized DApp written in Python, which originally resembles the one provided by the sample [Echo Python DApp](https://github.com/cartesi/rollups-examples/tree/main/echo-python).
 Contrary to that example, this DApp does not use shared resources from the `rollups-examples` main directory, and as such the commands for building, running and deploying it are slightly different.
 
 The documentation below reflects the original application code, and should also be used as a basis for documenting any DApp created with this mechanism.
@@ -56,8 +58,6 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-co
 ```
 
 This DApp's back-end is written in Python, so to run it in your machine you need to have `python3` installed.
-The backend uses hsapely library, so you should install libgeos-c on your host (refer to [geos](https://libgeos.org/usage/install/)).
-
 In order to start the back-end, run the following commands in a dedicated terminal:
 
 ```shell
@@ -75,34 +75,41 @@ After that, you can interact with the application normally [as explained above](
 
 ## Interacting with the application
 
-We can use the frontend web [frontend-web](https://github.com/lynoferraz/frontend-web-cartesi) application to interact with the DApp.
+You can use the frontend web [frontend-web](https://github.com/lynoferraz/frontend-web-cartesi) application to interact with the DApp.
 
-The DApp works as an echo dapp, but instead it echoes assets back to the owner emitting vouchers, and also tries to emit vouchers when it receives a json object:
+The DApp accepts deposits and json objects:
 1. deposits (it sends vouchers to depositor with the same assets)
 2. json 
-    Emit the json object voucher: 
+
+   Emit the json object voucher (e.g. mint cartesi token in hardhat obtained with inpect): 
     
-    ```{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x40c10f19000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266000000000000000000000000000000000000000000000000b469471f80140000"}
-    ```
+```json
+{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x40c10f19000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266000000000000000000000000000000000000000000000000b469471f80140000"}
+```
     
 3. You can use inspects to get the voucher json object. For that you should send the following json to the inspect endpoint (e.g. mint cartesi token in hardhat)
 
-    ```{"address":"0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
-        "functionName":"mint",
-        "parameters":["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",13000000000000000000],
-        "abi":[{"name": "mint","inputs": [{"type": "address"},{"type": "uint256"}],"type": "function"}]}
-    ```
+```json
+{"address":"0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+"functionName":"mint",
+"parameters":["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",13000000000000000000],
+"abi":[{"name": "mint","inputs": [{"type": "address"},{"type": "uint256"}],"type": "function"}]}
+```
 
 Hint: You can use the inspect to create a voucher payload that adds Cartesi DApp as a minter and run in python using the hardhat main wallet (the one that deployed the DApp). First generate the voucher payload with 
 
-    ```{"address":"0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
-        "functionName":"addMinter",
-        "parameters":["0xF8C694fd58360De278d5fF2276B7130Bfdc0192A"],
-        "abi":[{"name": "addMinter","inputs": [{"type": "address"}],"type": "function"}]}
-    ```
+```json
+{"address":"0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+"functionName":"addMinter",
+"parameters":["0xF8C694fd58360De278d5fF2276B7130Bfdc0192A"],
+"abi":[{"name": "addMinter","inputs": [{"type": "address"}],"type": "function"}]}
+```
+
 Which would give
 
-    ```{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x983b2d56000000000000000000000000f8c694fd58360de278d5ff2276b7130bfdc0192a"}```
+```json
+{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x983b2d56000000000000000000000000f8c694fd58360de278d5ff2276b7130bfdc0192a"}
+```
 
 Then run the following python command in the virtual env
 
@@ -112,7 +119,7 @@ cd dapp
 python3 -c "from web3 import Web3;Web3(Web3.HTTPProvider('http://localhost:8545')).eth.send_transaction({ 'to': '0x610178dA211FEF7D417bC0e6FeD39F05609AD788', 'data': '0x983b2d56000000000000000000000000f8c694fd58360de278d5ff2276b7130bfdc0192a'})"
 ```
 
-Notice that the "address" and "payload" translates to "to" and "data" (But remember that this command only work for the local hardhat becaus it is signing using the default account)
+Notice that the "address" and "payload" translates to "to" and "data" (But remember that this command only work for the local hardhat because it is signing using the default account)
 
 ## Deploying to a testnet
 
