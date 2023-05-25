@@ -156,7 +156,7 @@ def create_erc20_transfer_voucher(token_address,receiver,amount):
 
 def create_erc721_safetransfer_voucher(token_address,sender,receiver,id):
     # Function to be called in voucher [token_address].transfer([address sender],[address receiver],[uint256 id])
-    data = encode(['address', 'address', 'uint256'], [sender,receiver],id)
+    data = encode(['address', 'address', 'uint256'], [sender,receiver,id])
     voucher_payload = binary2hex(ERC721_SAFETRANSFER_FUNCTION_SELECTOR + data)
     voucher = {"address": token_address, "payload": voucher_payload}
     return voucher
@@ -195,9 +195,9 @@ def process_deposit_and_generate_voucher(payload):
         # send deposited erc721 back to depositor
         token_address = erc721_deposit["token_address"]
         receiver = erc721_deposit["depositor"]
-        amount = erc721_deposit["token_id"]
+        token_id = erc721_deposit["token_id"]
 
-        voucher = create_erc721_safetransfer_voucher(token_address,rollup_address,receiver,amount)
+        voucher = create_erc721_safetransfer_voucher(token_address,rollup_address,receiver,token_id)
 
     elif input_header == ETHER_DEPOSIT_HEADER:
         ether_deposit = decode_ether_deposit(binary)
