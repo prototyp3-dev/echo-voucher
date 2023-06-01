@@ -1,7 +1,7 @@
 # echo-voucher DApp
 
 ```
-This works for Cartesi Rollups version 0.8.x
+Cartesi Rollups version: 0.8.x
 ```
 
 The echo-voucher DApp works as an echo dapp, but instead it echoes assets back to the owner emitting vouchers, and also tries to emit vouchers when it receives a json object.
