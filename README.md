@@ -1,7 +1,7 @@
 # echo-voucher DApp
 
 ```
-Cartesi Rollups version: 0.8.x
+This works for Cartesi Rollups version 0.8.x
 ```
 
 The echo-voucher DApp works as an echo dapp, but instead it echoes assets back to the owner emitting vouchers, and also tries to emit vouchers when it receives a json object.
@@ -88,7 +88,7 @@ The DApp accepts deposits and json objects:
    Emit the json object voucher (e.g. mint cartesi token in hardhat obtained with inpect): 
     
 ```json
-{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x40c10f19000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266000000000000000000000000000000000000000000000000b469471f80140000"}
+{"destination": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x40c10f19000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266000000000000000000000000000000000000000000000000b469471f80140000"}
 ```
     
 3. You can use inspects to get the voucher json object. For that you should send the following json to the inspect endpoint (e.g. mint cartesi token in hardhat)
@@ -100,19 +100,28 @@ The DApp accepts deposits and json objects:
 "abi":[{"name": "mint","inputs": [{"type": "address"},{"type": "uint256"}],"type": "function"}]}
 ```
 
+   Optionally you can provide the function signature (in this example a ERC721 mint with a string):
+
+```json
+{"address":"0x7a20...814F",
+"functionName":"mint",
+"parameters":["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","test"],
+"signature":"mint(address,string)"}
+```
+
 Hint: You can use the inspect to create a voucher payload that adds Cartesi DApp as a minter and run in python using the hardhat main wallet (the one that deployed the DApp). First generate the voucher payload with 
 
 ```json
 {"address":"0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
 "functionName":"addMinter",
 "parameters":["0xF8C694fd58360De278d5fF2276B7130Bfdc0192A"],
-"abi":[{"name": "addMinter","inputs": [{"type": "address"}],"type": "function"}]}
+"signature":"addMinter(address)"}
 ```
 
 Which would give
 
 ```json
-{"address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x983b2d56000000000000000000000000f8c694fd58360de278d5ff2276b7130bfdc0192a"}
+{"destination": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788", "payload": "0x983b2d56000000000000000000000000f8c694fd58360de278d5ff2276b7130bfdc0192a"}
 ```
 
 Then run the following python command in the virtual env

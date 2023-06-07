@@ -15,7 +15,8 @@ import traceback
 import logging
 import requests
 import json
-from eth_abi import decode, encode
+from eth_abi import encode
+import re
 import web3
 
 logging.basicConfig(level="INFO")
@@ -23,6 +24,18 @@ logger = logging.getLogger(__name__)
 
 rollup_server = environ["ROLLUP_HTTP_SERVER_URL"]
 logger.info(f"HTTP rollup_server url is {rollup_server}")
+
+NETWORK = environ["NETWORK"]
+logger.info(f"NETWORK is {NETWORK}")
+
+networks = json.load(open("networks.json"))
+
+DAPP_RELAY_ADDRESS = networks[NETWORK]["DAPP_RELAY_ADDRESS"].lower()
+ETHER_PORTAL_ADDRESS = networks[NETWORK]["ETHER_PORTAL_ADDRESS"].lower()
+ERC20_PORTAL_ADDRESS = networks[NETWORK]["ERC20_PORTAL_ADDRESS"].lower()
+ERC721_PORTAL_ADDRESS = networks[NETWORK]["ERC721_PORTAL_ADDRESS"].lower()
+
+rollup_address = None
 
 w3 = web3.Web3()
 
@@ -72,25 +85,6 @@ def send_post(endpoint,json_data):
 
 
 ###
-# Portal Deposit headers
-
-# Default header for ERC-20 transfers coming from the Portal, which corresponds
-#   to the Keccak256-encoded string "ERC20_Transfer", as defined at
-#   https://github.com/cartesi/rollups/blob/v0.8.2/onchain/rollups/contracts/facets/ERC20PortalFacet.sol
-ERC20_DEPOSIT_HEADER = hex2binary(w3.keccak(b'ERC20_Transfer').hex())
-
-# Default header for ERC-721 transfers coming from the Portal, which corresponds
-#   to the Keccak256-encoded string "ERC721_Transfer", as defined at
-#   https://github.com/cartesi/rollups/blob/v0.8.2/onchain/rollups/contracts/facets/ERC721PortalFacet.sol
-ERC721_DEPOSIT_HEADER = hex2binary(w3.keccak(b'ERC721_Transfer').hex())
-
-# Default header for Ether transfers coming from the Portal, which corresponds
-# to the Keccak256-encoded string "Ether_Transfer", as defined at
-#   https://github.com/cartesi/rollups/blob/v0.8.2/onchain/rollups/contracts/facets/EtherPortalFacet.sol
-ETHER_DEPOSIT_HEADER = hex2binary(w3.keccak(b'Ether_Transfer').hex())
-
-
-###
 # Selector of functions for solidity <contract>.call(<payload>)
 
 # ERC-20 contract function selector to be called during the execution of a voucher,
@@ -104,41 +98,49 @@ ERC721_SAFETRANSFER_FUNCTION_SELECTOR = hex2binary(w3.keccak(b'safeTransferFrom(
 # EtherPortalFacet contract function selector to be called during the execution of a voucher,
 #   which corresponds to the first 4 bytes of the Keccak256-encoded result of "etherWithdrawal(bytes)", as defined at
 #   https://github.com/cartesi/rollups/blob/v0.8.2/onchain/rollups/contracts/interfaces/IEtherPortal.sol
-ETHER_WITHDRAWAL_FUNCTION_SELECTOR = hex2binary(w3.keccak(b'etherWithdrawal(bytes)')[:4].hex())
+ETHER_WITHDRAWAL_FUNCTION_SELECTOR = hex2binary(w3.keccak(b'withdrawEther(address,uint256)')[:4].hex())
 
 
 ###
-# Decode Deposit Aux Functions 
+# Decode Aux Functions 
 
 def decode_erc20_deposit(binary):
-    decoded = decode(['bytes32', 'address', 'address', 'uint256', 'bytes'], binary)
+    ret = binary[:1]
+    token_address = binary[1:21]
+    depositor = binary[21:41]
+    amount = int.from_bytes(binary[41:73], "big")
+    data = binary[73:]
     erc20_deposit = {
-        "depositor":decoded[1],
-        "token_address":decoded[2],
-        "amount":decoded[3],
-        "data":decoded[4],
+        "depositor":binary2hex(depositor),
+        "token_address":binary2hex(token_address),
+        "amount":amount,
+        "data":data
     }
     logger.info(erc20_deposit)
     return erc20_deposit
 
 def decode_erc721_deposit(binary):
-    decoded = decode(['bytes32', 'address', 'address', 'address', 'uint256', 'bytes'], binary)
+    token_address = binary[:20]
+    depositor = binary[20:40]
+    token_id = int.from_bytes(binary[40:72], "big")
+    data = binary[72:]
     erc721_deposit = {
-        "token_address":decoded[1],
-        "operator":decoded[2],
-        "depositor":decoded[3],
-        "token_id":decoded[4],
-        "data":decoded[5],
+        "token_address":binary2hex(token_address),
+        "depositor":binary2hex(depositor),
+        "token_id":token_id,
+        "data":data,
     }
     logger.info(erc721_deposit)
     return erc721_deposit
 
 def decode_ether_deposit(binary):
-    decoded = decode(['bytes32', 'address', 'uint256', 'bytes'], binary)
+    depositor = binary[:20]
+    amount = int.from_bytes(binary[20:52], "big")
+    data = binary[52:]
     ether_deposit = {
-        "depositor":decoded[1],
-        "amount":decoded[2],
-        "data":decoded[3],
+        "depositor":binary2hex(depositor),
+        "amount":amount,
+        "data":data
     }
     logger.info(ether_deposit)
     return ether_deposit
@@ -151,62 +153,61 @@ def create_erc20_transfer_voucher(token_address,receiver,amount):
     # Function to be called in voucher [token_address].transfer([address receiver],[uint256 amount])
     data = encode(['address', 'uint256'], [receiver,amount])
     voucher_payload = binary2hex(ERC20_TRANSFER_FUNCTION_SELECTOR + data)
-    voucher = {"address": token_address, "payload": voucher_payload}
+    voucher = {"destination": token_address, "payload": voucher_payload}
     return voucher
 
 def create_erc721_safetransfer_voucher(token_address,sender,receiver,id):
     # Function to be called in voucher [token_address].transfer([address sender],[address receiver],[uint256 id])
     data = encode(['address', 'address', 'uint256'], [sender,receiver,id])
     voucher_payload = binary2hex(ERC721_SAFETRANSFER_FUNCTION_SELECTOR + data)
-    voucher = {"address": token_address, "payload": voucher_payload}
+    voucher = {"destination": token_address, "payload": voucher_payload}
     return voucher
 
 def create_ether_withdrawal_voucher(receiver,amount):
     # Function to be called in voucher [rollups_address].etherWithdrawal(bytes) where bytes is ([address receiver],[uint256 amount])
     data = encode(['address', 'uint256'], [receiver,amount])
-    data2 = encode(['bytes'],[data])
-    voucher_payload = binary2hex(ETHER_WITHDRAWAL_FUNCTION_SELECTOR + data2)
-    voucher = {"address": rollup_address, "payload": voucher_payload}
+    voucher_payload = binary2hex(ETHER_WITHDRAWAL_FUNCTION_SELECTOR + data)
+    voucher = {"destination": rollup_address, "payload": voucher_payload}
     return voucher
 
 
 ###
 #  Generate Voucher Functions 
 
-def process_deposit_and_generate_voucher(payload):
+def process_deposit_and_generate_voucher(sender,payload):
     binary = hex2binary(payload)
-    input_header = decode(['bytes32'], binary)[0]
-    logger.info(f"header {input_header}")
     voucher = None
 
-    if input_header == ERC20_DEPOSIT_HEADER:
+    if sender == ERC20_PORTAL_ADDRESS:
         erc20_deposit = decode_erc20_deposit(binary)
 
         # send deposited erc20 back to depositor
         token_address = erc20_deposit["token_address"]
         receiver = erc20_deposit["depositor"]
         amount = erc20_deposit["amount"]
-
+        
         voucher = create_erc20_transfer_voucher(token_address,receiver,amount)
 
-    elif input_header == ERC721_DEPOSIT_HEADER:
+    elif sender == ERC721_PORTAL_ADDRESS:
         erc721_deposit = decode_erc721_deposit(binary)
 
         # send deposited erc721 back to depositor
-        token_address = erc721_deposit["token_address"]
-        receiver = erc721_deposit["depositor"]
-        token_id = erc721_deposit["token_id"]
+        if rollup_address is not None:
+            token_address = erc721_deposit["token_address"]
+            receiver = erc721_deposit["depositor"]
+            token_id = erc721_deposit["token_id"]
 
-        voucher = create_erc721_safetransfer_voucher(token_address,rollup_address,receiver,token_id)
+            voucher = create_erc721_safetransfer_voucher(token_address,rollup_address,receiver,token_id)
 
-    elif input_header == ETHER_DEPOSIT_HEADER:
+    elif sender == ETHER_PORTAL_ADDRESS:
         ether_deposit = decode_ether_deposit(binary)
 
         # send deposited ether back to depositor
-        receiver = ether_deposit["depositor"]
-        amount = ether_deposit["amount"]
+        if rollup_address is not None:
+            receiver = ether_deposit["depositor"]
+            amount = ether_deposit["amount"]
 
-        voucher = create_ether_withdrawal_voucher(receiver,amount)
+            voucher = create_ether_withdrawal_voucher(receiver,amount)
 
     else:
         pass
@@ -234,22 +235,28 @@ def process_and_validate_json(payload):
         raise Exception('Json object must include "functionName" key with the contract function name the voucher will execute')
     if not json_data.get("parameters"):
         raise Exception('Json object must include "parameters" key with the function parameters list')
-    if not json_data.get("abi"):
-        raise Exception('Json object must include "abi" key with the contract abi')
 
     contract_address = str(json_data["address"])
     function_name = str(json_data["functionName"])
     parameters = list(json_data["parameters"])
-    abi = list(json_data["abi"])
+    function_declaration = None
+    parameters_type = []
+    if json_data.get("abi"):
+        abi = list(json_data["abi"])
 
-    function_abi_list = list(filter(lambda entry: entry['type'] == 'function' and entry['name'] == function_name and len(entry['inputs']) == len(parameters), abi))
-    logger.info(f"function_abi_list {function_abi_list}")
-    if len(function_abi_list) != 1:
-        raise Exception('Could not find the abi for the selected function')
-    
-    function_abi = function_abi_list[0]
-    parameters_type = list(map(lambda i: i['type'],function_abi['inputs']))
-    function_declaration = f"{function_name}({','.join(parameters_type)})"
+        function_abi_list = list(filter(lambda entry: entry['type'] == 'function' and entry['name'] == function_name and len(entry['inputs']) == len(parameters), abi))
+        if len(function_abi_list) != 1:
+            raise Exception('Could not find the abi for the selected function')
+        
+        function_abi = function_abi_list[0]
+        parameters_type = list(map(lambda i: i['type'],function_abi['inputs']))
+        function_declaration = f"{function_name}({','.join(parameters_type)})"
+    elif json_data.get("signature"):
+        function_declaration = json_data["signature"]
+        match = re.search(r"(.*)\((.*)\)",function_declaration)
+        parameters_type = match.group(2).split(',')
+    else:
+        raise Exception('Json object must include either "abi" key with the contract abi or "signature" key with the function signature in the form functionName(parameter1,parameter2,...)')
     function_selector = hex2binary(w3.keccak(str2binary(function_declaration))[:4].hex())
 
     return {
@@ -264,7 +271,7 @@ def generate_voucher_from_json(payload):
 
     data = encode(processed_input["parameters_type"], processed_input["parameters"])
     voucher_payload = binary2hex(processed_input["function_selector"] + data)
-    voucher = {"address": processed_input["contract_address"], "payload": voucher_payload}
+    voucher = {"destination": processed_input["contract_address"], "payload": voucher_payload}
 
     return voucher
 
@@ -272,16 +279,20 @@ def generate_voucher_from_json(payload):
 # handlers
 
 def handle_advance(data):
-    logger.info(f"Received advance request data {data}")
-
+    global rollup_address
+    logger.info(f"Received advance request data {data}. Current rollup_address: {rollup_address}")
+    
     try:
         payload = data["payload"]
         voucher = None
 
-        # Check whether an input was sent by the Portal,
-        #   which is where all deposits must come from
-        if data["metadata"]["msg_sender"] == rollup_address:
-            voucher = process_deposit_and_generate_voucher(payload)
+        # Check whether an input was sent by the relay
+        if data['metadata']['msg_sender'] == DAPP_RELAY_ADDRESS:
+            rollup_address = payload
+            send_report({"payload": str2hex(f"Set rollup_address {rollup_address}")})
+        elif data["metadata"]["msg_sender"] in [ETHER_PORTAL_ADDRESS,ERC20_PORTAL_ADDRESS,ERC721_PORTAL_ADDRESS]:
+            # or was sent by the Portals, which is where deposits must come from
+            voucher = process_deposit_and_generate_voucher(data["metadata"]["msg_sender"],payload)
         else:
             # Otherwise, payload should be a json with the voucher ready to be sent
             voucher = get_voucher_from_input(payload)
@@ -330,7 +341,6 @@ handlers = {
 # Main Loop
 
 finish = {"status": "accept"}
-rollup_address = None
 
 while True:
     logger.info("Sending finish")
@@ -341,11 +351,5 @@ while True:
     else:
         rollup_request = response.json()
         data = rollup_request["data"]
-        if "metadata" in data:
-            metadata = data["metadata"]
-            if metadata["epoch_index"] == 0 and metadata["input_index"] == 0:
-                rollup_address = metadata["msg_sender"]
-                logger.info(f"Captured rollup address: {rollup_address}")
-                continue
         handler = handlers[rollup_request["request_type"]]
         finish["status"] = handler(rollup_request["data"])

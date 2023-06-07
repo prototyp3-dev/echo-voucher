@@ -24,5 +24,6 @@ FROM --platform=linux/riscv64 cartesi/python:3.10-slim-jammy
 COPY --from=build-stage /opt/venv /opt/venv
 
 WORKDIR /opt/cartesi/dapp
+COPY dapp/networks.json .
 COPY dapp/entrypoint.sh .
 COPY dapp/echo-voucher.py .
