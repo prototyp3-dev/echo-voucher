@@ -156,9 +156,9 @@ def create_erc20_transfer_voucher(token_address,receiver,amount):
     voucher = {"destination": token_address, "payload": voucher_payload}
     return voucher
 
-def create_erc721_safetransfer_voucher(token_address,sender,receiver,id):
-    # Function to be called in voucher [token_address].transfer([address sender],[address receiver],[uint256 id])
-    data = encode(['address', 'address', 'uint256'], [sender,receiver,id])
+def create_erc721_safetransfer_voucher(token_address,sender,receiver,token_id):
+    # Function to be called in voucher [token_address].transfer([address sender],[address receiver],[uint256 token_id])
+    data = encode(['address', 'address', 'uint256'], [sender,receiver,token_id])
     voucher_payload = binary2hex(ERC721_SAFETRANSFER_FUNCTION_SELECTOR + data)
     voucher = {"destination": token_address, "payload": voucher_payload}
     return voucher
